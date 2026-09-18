@@ -1,0 +1,255 @@
+from pathlib import Path
+
+path = Path("/mnt/data/banana_spinner.html")
+html = path.read_text(encoding="utf-8")
+
+# Replace the counter styling with a flexible stats row and add stop/confirm UI styling.
+html = html.replace(
+"""  #counter {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font: 16px Arial, sans-serif;
+    color: #222;
+    pointer-events: none;
+  }""",
+"""  #stats {
+    position: absolute;
+    bottom: 20px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    font: 16px Arial, sans-serif;
+    color: #222;
+    pointer-events: none;
+    text-align: center;
+  }
+
+  #stopButton {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 18px;
+    min-height: 44px;
+    border: 1px solid #bbb;
+    border-radius: 8px;
+    background: #fff;
+    color: #222;
+    font: 16px Arial, sans-serif;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  #stopButton:active {
+    background: #eee;
+  }
+
+  #confirmBox {
+    position: absolute;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    width: min(340px, calc(100% - 24px));
+    padding: 14px;
+    border: 1px solid #bbb;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 4px 18px rgba(0,0,0,.12);
+    text-align: center;
+    font: 15px Arial, sans-serif;
+    color: #222;
+    z-index: 5;
+  }
+
+  #confirmBox p {
+    margin: 0 0 12px;
+  }
+
+  #confirmBox button {
+    min-height: 44px;
+    padding: 8px 14px;
+    margin: 0 4px;
+    border: 1px solid #bbb;
+    border-radius: 7px;
+    background: #fff;
+    cursor: pointer;
+    font: 15px Arial, sans-serif;
+  }"""
+)
+
+html = html.replace(
+"""  <div id="banana" role="button" tabindex="0" aria-label="Spin banana">🍌</div>
+  <div id="counter" aria-live="polite">0</div>""",
+"""  <button id="stopButton" type="button">Stop spin</button>
+
+  <div id="confirmBox" role="dialog" aria-modal="false" aria-labelledby="confirmText">
+    <p id="confirmText">Stop the banana from spinning?</p>
+    <button id="confirmStop" type="button">Confirm</button>
+    <button id="cancelStop" type="button">Cancel</button>
+  </div>
+
+  <div id="banana" role="button" tabindex="0" aria-label="Spin banana">🍌</div>
+
+  <div id="stats" aria-live="polite">
+    <span id="counter">0 spins</span>
+    <span id="sps">0.00 spins/s</span>
+  </div>"""
+)
+
+# Replace the JS setup and animation with the enhanced version.
+start = html.index("<script>\n(() => {")
+end = html.index("\n</script>", start)
+
+script = r'''<script>
+(() => {
+  const banana = document.getElementById("banana");
+  const counter = document.getElementById("counter");
+  const spsDisplay = document.getElementById("sps");
+  const stopButton = document.getElementById("stopButton");
+  const confirmBox = document.getElementById("confirmBox");
+  const confirmStop = document.getElementById("confirmStop");
+  const cancelStop = document.getElementById("cancelStop");
+
+  const SAVE_KEY = "banana-spin-save-v2";
+
+  let angle = 0;
+  let speed = 0;
+  let spins = 0;
+  let lastTime = performance.now();
+  let lastSave = 0;
+  let recentSpins = [];
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (saved) {
+      if (Number.isFinite(saved.angle)) angle = saved.angle;
+      if (Number.isFinite(saved.speed)) speed = Math.max(0, saved.speed);
+      if (Number.isFinite(saved.spins)) spins = Math.max(0, Math.floor(saved.spins));
+      counter.textContent = formatNumber(spins) + " spins";
+    }
+  } catch (_) {}
+
+  function formatNumber(value) {
+    value = Math.max(0, Math.floor(value));
+
+    if (value >= 1e15) return trimNumber(value / 1e15) + "Q";
+    if (value >= 1e12) return trimNumber(value / 1e12) + "T";
+    if (value >= 1e9) return trimNumber(value / 1e9) + "B";
+    if (value >= 1e6) return trimNumber(value / 1e6) + "M";
+    if (value >= 1e3) return value.toLocaleString("en-US");
+
+    return value.toString();
+  }
+
+  function trimNumber(value) {
+    if (value >= 100) return Math.round(value).toString();
+    if (value >= 10) return value.toFixed(1).replace(/\.0$/, "");
+    return value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(
+        SAVE_KEY,
+        JSON.stringify({ angle, speed, spins })
+      );
+    } catch (_) {}
+  }
+
+  function addSpeed() {
+    speed += 110;
+  }
+
+  function updateCounter() {
+    counter.textContent = formatNumber(spins) + " spins";
+  }
+
+  function updateSPS(now) {
+    const cutoff = now - 1000;
+    recentSpins = recentSpins.filter(time => time >= cutoff);
+    spsDisplay.textContent = recentSpins.length.toFixed(2) + " spins/s";
+  }
+
+  banana.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    addSpeed();
+  });
+
+  banana.addEventListener("dragstart", (event) => {
+    event.preventDefault();
+  });
+
+  banana.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      addSpeed();
+    }
+  });
+
+  stopButton.addEventListener("click", () => {
+    confirmBox.style.display = "block";
+    confirmStop.focus();
+  });
+
+  cancelStop.addEventListener("click", () => {
+    confirmBox.style.display = "none";
+    stopButton.focus();
+  });
+
+  confirmStop.addEventListener("click", () => {
+    speed = 0;
+    confirmBox.style.display = "none";
+    save();
+    stopButton.focus();
+  });
+
+  function animate(now) {
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+
+    angle += speed * dt;
+
+    const completedSpins = Math.floor(angle / 360);
+
+    if (completedSpins > spins) {
+      for (let n = spins + 1; n <= completedSpins; n++) {
+        recentSpins.push(now);
+      }
+      spins = completedSpins;
+      updateCounter();
+    }
+
+    banana.style.transform = `rotate(${angle}deg)`;
+
+    // Linear friction: no speed cap, but it eventually reaches zero.
+    const friction = 35;
+    speed = Math.max(0, speed - friction * dt);
+
+    updateSPS(now);
+
+    if (now - lastSave > 1000) {
+      save();
+      lastSave = now;
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  window.addEventListener("beforeunload", save);
+
+  updateCounter();
+  updateSPS(performance.now());
+  requestAnimationFrame(animate);
+})();
+</script>'''
+
+html = html[:start] + script + html[end + len("\n</script>"):]
+
+path.write_text(html, encoding="utf-8")
+print("Updated banana_spinner.html with SPS, number formatting, and confirmed stop control.")
