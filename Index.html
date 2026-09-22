@@ -1,1 +1,1418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+<title>Banana Spinner</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: white;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#game {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+#bananaArea {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#banana {
+    font-size: clamp(150px, 25vw, 270px);
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+    will-change: transform;
+}
+
+#banana:focus,
+#banana:focus-visible {
+    outline: none;
+}
+
+#stats {
+    position: absolute;
+    bottom: 18px;
+    left: 10px;
+    right: 10px;
+
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    flex-wrap: wrap;
+
+    font-size: 17px;
+    color: #222;
+}
+
+#shopButton {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+
+    padding: 10px 16px;
+
+    border: 1px solid #ccc;
+    border-radius: 10px;
+
+    background: white;
+    color: #222;
+
+    font-size: 16px;
+    cursor: pointer;
+}
+
+#shop {
+    position: absolute;
+
+    top: 65px;
+    right: 15px;
+
+    width: min(390px, calc(100% - 30px));
+    max-height: calc(100% - 90px);
+
+    background: white;
+
+    border: 1px solid #ccc;
+    border-radius: 14px;
+
+    box-shadow: 0 5px 25px rgba(0,0,0,.15);
+
+    overflow-y: auto;
+
+    padding: 14px;
+
+    display: none;
+
+    z-index: 10;
+}
+
+#shop.open {
+    display: block;
+}
+
+#shopHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 12px;
+}
+
+#shopHeader h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+#closeShop {
+    border: 0;
+    background: transparent;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.upgrade {
+    width: 100%;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    gap: 10px;
+
+    padding: 12px;
+    margin-bottom: 8px;
+
+    border: 1px solid #ddd;
+    border-radius: 10px;
+
+    background: #fafafa;
+
+    cursor: pointer;
+
+    text-align: left;
+}
+
+.upgrade:hover {
+    background: #f2f2f2;
+}
+
+.upgrade:disabled {
+    opacity: .45;
+    cursor: default;
+}
+
+.upgradeInfo {
+    min-width: 0;
+}
+
+.upgradeName {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.upgradeDescription {
+    font-size: 13px;
+    color: #666;
+}
+
+.upgradeRight {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.upgradeCost {
+    font-weight: bold;
+}
+
+.upgradeLevel {
+    font-size: 12px;
+    color: #777;
+}
+
+#toast {
+    position: absolute;
+
+    left: 50%;
+    bottom: 70px;
+
+    transform: translateX(-50%);
+
+    background: #222;
+    color: white;
+
+    padding: 8px 14px;
+
+    border-radius: 8px;
+
+    opacity: 0;
+
+    pointer-events: none;
+
+    transition: opacity .2s;
+}
+
+#toast.show {
+    opacity: 1;
+}
+</style>
+</head>
+
+<body>
+
+<div id="game">
+
+    <div id="bananaArea">
+        <div id="banana">🍌</div>
+    </div>
+
+    <button id="shopButton">
+        Upgrades
+    </button>
+
+    <div id="stats">
+        <span id="spins">0</span>
+        <span id="coins">0 🍌</span>
+        <span id="speed">0.0</span>
+    </div>
+
+    <div id="shop">
+
+        <div id="shopHeader">
+            <h2>Upgrades</h2>
+
+            <button id="closeShop">
+                ×
+            </button>
+        </div>
+
+        <div id="upgradeList"></div>
+
+    </div>
+
+    <div id="toast"></div>
+
+</div>
+
+
+<script>
+
+(() => {
+
+    const banana =
+        document.getElementById("banana");
+
+    const spinsDisplay =
+        document.getElementById("spins");
+
+    const coinsDisplay =
+        document.getElementById("coins");
+
+    const speedDisplay =
+        document.getElementById("speed");
+
+    const shopButton =
+        document.getElementById("shopButton");
+
+    const closeShop =
+        document.getElementById("closeShop");
+
+    const shop =
+        document.getElementById("shop");
+
+    const upgradeList =
+        document.getElementById("upgradeList");
+
+    const toast =
+        document.getElementById("toast");
+
+
+    /*
+    =====================================================
+    GAME VARIABLES
+    =====================================================
+    */
+
+    let angle = 0;
+
+    let speed = 0;
+
+    let spins = 0;
+
+    let coins = 0;
+
+    let lastTime = performance.now();
+
+    let lastSave = 0;
+
+    let toastTimer;
+
+
+    /*
+    =====================================================
+    30 UPGRADES
+    =====================================================
+    */
+
+    const upgrades = [
+
+        {
+            name: "Banana Grip",
+            description: "+25 click power",
+            baseCost: 25,
+            effect: "click",
+            value: 25
+        },
+
+        {
+            name: "Better Grip",
+            description: "+50 click power",
+            baseCost: 75,
+            effect: "click",
+            value: 50
+        },
+
+        {
+            name: "Golden Peel",
+            description: "+100 click power",
+            baseCost: 200,
+            effect: "click",
+            value: 100
+        },
+
+        {
+            name: "Banana Juice",
+            description: "+200 click power",
+            baseCost: 500,
+            effect: "click",
+            value: 200
+        },
+
+        {
+            name: "Turbo Banana",
+            description: "+500 click power",
+            baseCost: 1200,
+            effect: "click",
+            value: 500
+        },
+
+        {
+            name: "Rocket Peel",
+            description: "+1,000 click power",
+            baseCost: 3000,
+            effect: "click",
+            value: 1000
+        },
+
+        {
+            name: "Super Banana",
+            description: "+2,500 click power",
+            baseCost: 7500,
+            effect: "click",
+            value: 2500
+        },
+
+        {
+            name: "Banana Engine",
+            description: "+5,000 click power",
+            baseCost: 18000,
+            effect: "click",
+            value: 5000
+        },
+
+        {
+            name: "Banana Reactor",
+            description: "+12,000 click power",
+            baseCost: 50000,
+            effect: "click",
+            value: 12000
+        },
+
+        {
+            name: "Golden Engine",
+            description: "+30,000 click power",
+            baseCost: 150000,
+            effect: "click",
+            value: 30000
+        },
+
+
+        {
+            name: "Tiny Spinner",
+            description: "+2 passive speed",
+            baseCost: 100,
+            effect: "auto",
+            value: 2
+        },
+
+        {
+            name: "Small Spinner",
+            description: "+5 passive speed",
+            baseCost: 300,
+            effect: "auto",
+            value: 5
+        },
+
+        {
+            name: "Spin Motor",
+            description: "+10 passive speed",
+            baseCost: 1000,
+            effect: "auto",
+            value: 10
+        },
+
+        {
+            name: "Turbo Motor",
+            description: "+25 passive speed",
+            baseCost: 3000,
+            effect: "auto",
+            value: 25
+        },
+
+        {
+            name: "Banana Factory",
+            description: "+60 passive speed",
+            baseCost: 10000,
+            effect: "auto",
+            value: 60
+        },
+
+        {
+            name: "Spin Factory",
+            description: "+150 passive speed",
+            baseCost: 30000,
+            effect: "auto",
+            value: 150
+        },
+
+        {
+            name: "Mega Motor",
+            description: "+400 passive speed",
+            baseCost: 100000,
+            effect: "auto",
+            value: 400
+        },
+
+        {
+            name: "Quantum Motor",
+            description: "+1,000 passive speed",
+            baseCost: 350000,
+            effect: "auto",
+            value: 1000
+        },
+
+
+        {
+            name: "Smooth Wheels",
+            description: "10% less friction",
+            baseCost: 500,
+            effect: "friction",
+            value: .10
+        },
+
+        {
+            name: "Oil Machine",
+            description: "15% less friction",
+            baseCost: 2500,
+            effect: "friction",
+            value: .15
+        },
+
+        {
+            name: "Liquid Banana",
+            description: "20% less friction",
+            baseCost: 10000,
+            effect: "friction",
+            value: .20
+        },
+
+
+        {
+            name: "Lucky Banana",
+            description: "10% chance for 2x coins",
+            baseCost: 1500,
+            effect: "crit",
+            value: .10
+        },
+
+        {
+            name: "Very Lucky Banana",
+            description: "15% chance for 2x coins",
+            baseCost: 6000,
+            effect: "crit",
+            value: .15
+        },
+
+        {
+            name: "Golden Luck",
+            description: "20% chance for 3x coins",
+            baseCost: 25000,
+            effect: "crit",
+            value: .20
+        },
+
+
+        {
+            name: "Spin Multiplier",
+            description: "+1 coin per completed spin",
+            baseCost: 5000,
+            effect: "coins",
+            value: 1
+        },
+
+        {
+            name: "Golden Multiplier",
+            description: "+5 coins per completed spin",
+            baseCost: 25000,
+            effect: "coins",
+            value: 5
+        },
+
+        {
+            name: "Diamond Multiplier",
+            description: "+20 coins per completed spin",
+            baseCost: 100000,
+            effect: "coins",
+            value: 20
+        },
+
+        {
+            name: "Banana Empire",
+            description: "+100 coins per completed spin",
+            baseCost: 500000,
+            effect: "coins",
+            value: 100
+        },
+
+        {
+            name: "Banana Dimension",
+            description: "+500 coins per completed spin",
+            baseCost: 2500000,
+            effect: "coins",
+            value: 500
+        },
+
+        {
+            name: "Infinity Banana",
+            description: "Massive all-around boost",
+            baseCost: 10000000,
+            effect: "ultimate",
+            value: 1
+        }
+
+    ];
+
+
+    /*
+    =====================================================
+    UPGRADE LEVELS
+    =====================================================
+    */
+
+    const levels =
+        new Array(upgrades.length).fill(0);
+
+
+    /*
+    =====================================================
+    LOAD SAVE
+    =====================================================
+    */
+
+    try {
+
+        const saved =
+            JSON.parse(
+                localStorage.getItem(
+                    "banana-spinner-upgrades"
+                )
+            );
+
+        if (saved) {
+
+            angle = saved.angle || 0;
+
+            speed = saved.speed || 0;
+
+            spins = saved.spins || 0;
+
+            coins = saved.coins || 0;
+
+            if (Array.isArray(saved.levels)) {
+
+                saved.levels.forEach(
+                    (level, index) => {
+
+                        if (
+                            index < levels.length &&
+                            Number.isFinite(level)
+                        ) {
+                            levels[index] =
+                                Math.max(
+                                    0,
+                                    Math.floor(level)
+                                );
+                        }
+
+                    }
+                );
+            }
+
+        }
+
+    } catch (e) {}
+
+
+    /*
+    =====================================================
+    UPGRADE COST
+    =====================================================
+    */
+
+    function getCost(index) {
+
+        const upgrade =
+            upgrades[index];
+
+        const level =
+            levels[index];
+
+        return Math.floor(
+            upgrade.baseCost *
+            Math.pow(1.65, level)
+        );
+    }
+
+
+    /*
+    =====================================================
+    TOTAL CLICK POWER
+    =====================================================
+    */
+
+    function getClickPower() {
+
+        let power = 110;
+
+        upgrades.forEach(
+            (upgrade, index) => {
+
+                if (
+                    upgrade.effect === "click"
+                ) {
+
+                    power +=
+                        upgrade.value *
+                        levels[index];
+
+                }
+
+            }
+        );
+
+
+        // Ultimate upgrade
+
+        const ultimate =
+            levels[29];
+
+        if (ultimate > 0) {
+
+            power *=
+                Math.pow(
+                    2,
+                    ultimate
+                );
+        }
+
+
+        return power;
+    }
+
+
+    /*
+    =====================================================
+    PASSIVE SPEED
+    =====================================================
+    */
+
+    function getPassiveSpeed() {
+
+        let value = 0;
+
+        upgrades.forEach(
+            (upgrade, index) => {
+
+                if (
+                    upgrade.effect === "auto"
+                ) {
+
+                    value +=
+                        upgrade.value *
+                        levels[index];
+
+                }
+
+            }
+        );
+
+
+        const ultimate =
+            levels[29];
+
+        if (ultimate > 0) {
+
+            value *=
+                Math.pow(
+                    2,
+                    ultimate
+                );
+        }
+
+
+        return value;
+    }
+
+
+    /*
+    =====================================================
+    FRICTION
+    =====================================================
+    */
+
+    function getFrictionMultiplier() {
+
+        let reduction = 0;
+
+        upgrades.forEach(
+            (upgrade, index) => {
+
+                if (
+                    upgrade.effect === "friction"
+                ) {
+
+                    reduction +=
+                        upgrade.value *
+                        levels[index];
+
+                }
+
+            }
+        );
+
+
+        reduction =
+            Math.min(
+                reduction,
+                .85
+            );
+
+
+        return 1 - reduction;
+    }
+
+
+    /*
+    =====================================================
+    CRITICAL CHANCE
+    =====================================================
+    */
+
+    function getCritChance() {
+
+        let chance = 0;
+
+        upgrades.forEach(
+            (upgrade, index) => {
+
+                if (
+                    upgrade.effect === "crit"
+                ) {
+
+                    chance +=
+                        upgrade.value *
+                        levels[index];
+
+                }
+
+            }
+        );
+
+        return Math.min(
+            chance,
+            .75
+        );
+    }
+
+
+    /*
+    =====================================================
+    COINS PER SPIN
+    =====================================================
+    */
+
+    function getCoinsPerSpin() {
+
+        let value = 1;
+
+        upgrades.forEach(
+            (upgrade, index) => {
+
+                if (
+                    upgrade.effect === "coins"
+                ) {
+
+                    value +=
+                        upgrade.value *
+                        levels[index];
+
+                }
+
+            }
+        );
+
+        return value;
+    }
+
+
+    /*
+    =====================================================
+    CLICK
+    =====================================================
+    */
+
+    function clickBanana() {
+
+        speed +=
+            getClickPower();
+    }
+
+
+    banana.addEventListener(
+        "pointerdown",
+        event => {
+
+            event.preventDefault();
+
+            clickBanana();
+        }
+    );
+
+
+    banana.addEventListener(
+        "dragstart",
+        event => {
+
+            event.preventDefault();
+        }
+    );
+
+
+    /*
+    =====================================================
+    SPACE / ENTER
+    =====================================================
+    */
+
+    document.addEventListener(
+        "keydown",
+        event => {
+
+            if (
+                event.code === "Space" ||
+                event.code === "Enter"
+            ) {
+
+                event.preventDefault();
+
+                clickBanana();
+            }
+
+        }
+    );
+
+
+    /*
+    =====================================================
+    COMPLETED SPIN
+    =====================================================
+    */
+
+    let lastCompletedSpin = 0;
+
+    function checkSpins() {
+
+        const completed =
+            Math.floor(
+                angle / 360
+            );
+
+
+        if (
+            completed <=
+            lastCompletedSpin
+        ) {
+
+            return;
+        }
+
+
+        const newSpins =
+            completed -
+            lastCompletedSpin;
+
+
+        lastCompletedSpin =
+            completed;
+
+
+        spins += newSpins;
+
+
+        /*
+        Coins
+        */
+
+        const baseCoins =
+            getCoinsPerSpin();
+
+
+        for (
+            let i = 0;
+            i < newSpins;
+            i++
+        ) {
+
+            let reward =
+                baseCoins;
+
+
+            /*
+            Critical reward
+            */
+
+            if (
+                Math.random() <
+                getCritChance()
+            ) {
+
+                reward *= 2;
+            }
+
+
+            coins += reward;
+        }
+
+    }
+
+
+    /*
+    =====================================================
+    SHOP
+    =====================================================
+    */
+
+    function renderShop() {
+
+        upgradeList.innerHTML = "";
+
+
+        upgrades.forEach(
+            (upgrade, index) => {
+
+                const level =
+                    levels[index];
+
+                const cost =
+                    getCost(index);
+
+
+                const button =
+                    document.createElement(
+                        "button"
+                    );
+
+                button.className =
+                    "upgrade";
+
+
+                button.disabled =
+                    coins < cost;
+
+
+                button.innerHTML = `
+
+                    <div class="upgradeInfo">
+
+                        <div class="upgradeName">
+                            ${index + 1}. ${upgrade.name}
+                        </div>
+
+                        <div class="upgradeDescription">
+                            ${upgrade.description}
+                        </div>
+
+                    </div>
+
+                    <div class="upgradeRight">
+
+                        <div class="upgradeCost">
+                            ${formatNumber(cost)} 🍌
+                        </div>
+
+                        <div class="upgradeLevel">
+                            Level ${level}
+                        </div>
+
+                    </div>
+
+                `;
+
+
+                button.addEventListener(
+                    "click",
+                    () => buyUpgrade(index)
+                );
+
+
+                upgradeList.appendChild(
+                    button
+                );
+
+            }
+        );
+
+    }
+
+
+    /*
+    =====================================================
+    BUY UPGRADE
+    =====================================================
+    */
+
+    function buyUpgrade(index) {
+
+        const cost =
+            getCost(index);
+
+
+        if (coins < cost) {
+
+            return;
+        }
+
+
+        coins -= cost;
+
+        levels[index]++;
+
+
+        showToast(
+            upgrades[index].name +
+            " upgraded!"
+        );
+
+
+        renderShop();
+
+        updateStats();
+
+        save();
+
+    }
+
+
+    /*
+    =====================================================
+    SHOP BUTTON
+    =====================================================
+    */
+
+    shopButton.addEventListener(
+        "click",
+        () => {
+
+            shop.classList.toggle(
+                "open"
+            );
+
+            if (
+                shop.classList.contains(
+                    "open"
+                )
+            ) {
+
+                renderShop();
+            }
+
+        }
+    );
+
+
+    closeShop.addEventListener(
+        "click",
+        () => {
+
+            shop.classList.remove(
+                "open"
+            );
+
+        }
+    );
+
+
+    /*
+    =====================================================
+    FORMAT NUMBER
+    =====================================================
+    */
+
+    function formatNumber(number) {
+
+        if (
+            number >=
+            1000000000000
+        ) {
+
+            return (
+                number / 1000000000000
+            )
+                .toFixed(1)
+                .replace(
+                    ".0",
+                    ""
+                ) + "T";
+
+        }
+
+
+        if (
+            number >=
+            1000000000
+        ) {
+
+            return (
+                number / 1000000000
+            )
+                .toFixed(1)
+                .replace(
+                    ".0",
+                    ""
+                ) + "B";
+
+        }
+
+
+        if (
+            number >=
+            1000000
+        ) {
+
+            return (
+                number / 1000000
+            )
+                .toFixed(1)
+                .replace(
+                    ".0",
+                    ""
+                ) + "M";
+
+        }
+
+
+        return Math.floor(
+            number
+        ).toLocaleString(
+            "en-US"
+        );
+    }
+
+
+    /*
+    =====================================================
+    STATS
+    =====================================================
+    */
+
+    function updateStats() {
+
+        spinsDisplay.textContent =
+            formatNumber(spins);
+
+        coinsDisplay.textContent =
+            formatNumber(coins) +
+            " 🍌";
+
+        rateDisplay.textContent =
+            (speed / 360).toFixed(1);
+
+    }
+
+
+    /*
+    =====================================================
+    TOAST
+    =====================================================
+    */
+
+    function showToast(message) {
+
+        toast.textContent =
+            message;
+
+        toast.classList.add(
+            "show"
+        );
+
+
+        clearTimeout(
+            toastTimer
+        );
+
+
+        toastTimer =
+            setTimeout(
+                () => {
+
+                    toast.classList.remove(
+                        "show"
+                    );
+
+                },
+                1200
+            );
+
+    }
+
+
+    /*
+    =====================================================
+    SAVE
+    =====================================================
+    */
+
+    function save() {
+
+        try {
+
+            localStorage.setItem(
+                "banana-spinner-upgrades",
+                JSON.stringify({
+
+                    angle,
+                    speed,
+                    spins,
+                    coins,
+                    levels
+
+                })
+            );
+
+        } catch (e) {}
+
+    }
+
+
+    /*
+    =====================================================
+    GAME LOOP
+    =====================================================
+    */
+
+    function animate(now) {
+
+        const dt =
+            Math.min(
+                (now - lastTime) / 1000,
+                .05
+            );
+
+
+        lastTime = now;
+
+
+        /*
+        Passive spinning
+        */
+
+        speed +=
+            getPassiveSpeed() *
+            dt;
+
+
+        /*
+        Rotation
+        */
+
+        angle +=
+            speed *
+            dt;
+
+
+        /*
+        Count completed rotations
+        */
+
+        checkSpins();
+
+
+        /*
+        Adaptive friction
+        */
+
+        const baseFriction =
+            35;
+
+
+        const lowSpeedFriction =
+            Math.max(
+                0,
+                8 - speed / 25
+            ) * 8;
+
+
+        const friction =
+            (
+                baseFriction +
+                lowSpeedFriction
+            ) *
+            getFrictionMultiplier();
+
+
+        speed =
+            Math.max(
+                0,
+                speed -
+                friction * dt
+            );
+
+
+        /*
+        Draw banana
+        */
+
+        banana.style.transform =
+            `rotate(${angle}deg)`;
+
+
+        /*
+        Stats
+        */
+
+        updateStats();
+
+
+        /*
+        Save
+        */
+
+        if (
+            now - lastSave >
+            1000
+        ) {
+
+            save();
+
+            lastSave = now;
+        }
+
+
+        requestAnimationFrame(
+            animate
+        );
+
+    }
+
+
+    /*
+    =====================================================
+    START
+    =====================================================
+    */
+
+    lastCompletedSpin =
+        Math.floor(
+            angle / 360
+        );
+
+
+    updateStats();
+
+    requestAnimationFrame(
+        animate
+    );
+
+})();
+
+</script>
+
+</body>
+</html>
